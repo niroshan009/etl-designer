@@ -20,6 +20,8 @@ public class ETLVertex {
 
     private String type;
 
+    private String description;
+
     @Override
     public boolean equals(Object o) {
         if (o == null || getClass() != o.getClass()) return false;

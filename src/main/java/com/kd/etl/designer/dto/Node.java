@@ -10,4 +10,5 @@ import lombok.NoArgsConstructor;
 public class Node {
     private String id;
     private String type;
+    private String description;
 }

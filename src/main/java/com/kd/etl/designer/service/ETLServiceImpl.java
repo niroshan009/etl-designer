@@ -55,23 +55,20 @@ public class ETLServiceImpl implements ETLService {
                     }
 
                 } else {
-
                     sourceVertex.setOutputDataset(label);
                     sourceVertex.setType(sourceNode.getType());
                     etlGraph.addVertex(sourceVertex);
-
                 }
             }
 
             if(targetNode != null){
 
                 log.info("adding a target node {}",targetNode.getId());
-
                 targetVertex = new ETLVertex();
-
                 targetVertex.setId(targetNode.getId());
 
                 if (null != etlGraph.getVertex(targetVertex)) {
+                    log.info("target node exists as source node");
                     ETLVertex existingVertex = etlGraph.getVertex(targetVertex);
                     if(null == existingVertex.getInputDataset())
                     {
@@ -81,7 +78,9 @@ public class ETLServiceImpl implements ETLService {
                     } else {
                         existingVertex.getInputDataset().add(label);
                     }
+                    targetVertex = existingVertex;
                 } else {
+                    log.info("target node not added as source node");
                     List<String> inputDs = new ArrayList<>();
                     inputDs.add(label);
                     targetVertex.setType(targetNode.getType());
