@@ -6,6 +6,7 @@ import lombok.NoArgsConstructor;
 
 import java.io.Serializable;
 import java.util.List;
+import java.util.Map;
 
 @Data
 @NoArgsConstructor
@@ -15,4 +16,6 @@ public class ETLRequest implements Serializable {
     private List<Edge> edges;
 
     private List<Node> nodes;
+
+    private List<Configuration> configuration;
 }

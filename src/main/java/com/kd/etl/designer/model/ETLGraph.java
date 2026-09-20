@@ -34,4 +34,18 @@ public class ETLGraph<T> {
         return this.adjacencyList.keySet().stream().filter(e -> e.equals(vertex)).findFirst().orElse(null);
     }
 
+    public Map<T, List<T>> getAdjacencyList(){
+        return this.adjacencyList;
+    }
+
+
+    public String getGraphString(){
+        StringBuilder stringBuilder = new StringBuilder();
+
+        for (Map.Entry<T, List<T>> entry : adjacencyList.entrySet()) {
+            stringBuilder.append(entry.getKey()+" ->"+ entry.getValue());
+        }
+        System.out.println(stringBuilder.toString());
+        return stringBuilder.toString();
+    }
 }

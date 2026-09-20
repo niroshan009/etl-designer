@@ -5,5 +5,5 @@ import org.springframework.stereotype.Service;
 
 public interface ETLService {
 
-    public void generateGraph(ETLRequest etlRequest);
+    public String generateGraph(ETLRequest etlRequest);
 }
