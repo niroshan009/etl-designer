@@ -186,7 +186,7 @@ public class ETLServiceImpl implements ETLService {
 
         SystemMessage[] systemMessages = new SystemMessage[] {
                 new SystemMessage("You are a most efficient Apache Spark Developer"),
-                new SystemMessage("You only return the code. no explanation. just plain code and code comments"),
+                new SystemMessage("You only return the code. no explanation. don't add extensive comments. if explanation necessary add single line of comment"),
                 new SystemMessage("You only write a python script using given instruction utilising spark framework."),
                 new SystemMessage("You don't need to create test data"),
                 new SystemMessage("Some instruction might not be in order so see if one step depends on dataset from another later step. if so execute those steps first"),
