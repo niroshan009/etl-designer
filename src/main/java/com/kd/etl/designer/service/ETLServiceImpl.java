@@ -115,12 +115,29 @@ public class ETLServiceImpl implements ETLService {
 
         Set<ETLVertex> sourceNodes = getSourceNodes(etlGraph);
         Set<ETLVertex> terminalNodes = getTerminalNodes(etlGraph);
-        Set<ETLVertex> intermediateNodes = etlGraph.getAdjacencyList().keySet()
-                        .stream()
-                        .filter(e -> !sourceNodes.contains(e))
-                        .filter(e -> !terminalNodes.contains(e))
-                        .collect(Collectors.toSet());
-        StringBuilder generation = new StringBuilder();
+        LinkedList<ETLVertex> actionNodes = new LinkedList<>();
+
+        etlGraph.getAdjacencyList()
+                .entrySet()
+                .stream()
+                .filter(e -> !sourceNodes.contains(e.getKey()))
+                .filter(e -> !terminalNodes.contains(e.getKey()))
+                .forEach(e -> {
+                        List<ETLVertex> targetNodes  = e.getValue();
+                        for (ETLVertex targetNode : targetNodes) {
+                            if (!actionNodes.contains(targetNode)) {
+                                actionNodes.add(e.getKey());
+                            } else {
+                                int index = actionNodes.indexOf(targetNode);
+                                actionNodes.add(index, e.getKey());
+                            }
+                            System.out.println("heere");
+
+                    }
+                });
+
+
+
 
         List<Message> userMessages = new ArrayList<>();
         userMessages.add(new UserMessage("Set below configuration for spark job"));
@@ -135,7 +152,7 @@ public class ETLServiceImpl implements ETLService {
             userMessages.add(new UserMessage(instruction));
         }
 
-        for(ETLVertex e : intermediateNodes){
+        for(ETLVertex e : actionNodes){
             String action = switch (e.getType()){
                 case "filter" -> "filter %s dataset with condition %s, and produce %s dataset.\n".formatted(e.getInputDataset(), e.getDescription(), e.getOutputDataset());
                 case "join" -> "join %s datasets on condition %s, and produce dataset %s.\n".formatted(e.getInputDataset(),e.getDescription(), e.getOutputDataset());
