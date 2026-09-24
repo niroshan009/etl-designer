@@ -148,14 +148,14 @@ public class ETLServiceImpl implements ETLService {
         userMessages.add(new UserMessage("Below is the spark dataflow"));
 
         for(ETLVertex e : sourceNodes) {
-            String instruction = "Create a dataset %s reading data using %s. from %s\n".formatted(e.getOutputDataset(), e.getType(), e.getDescription());
+            String instruction = "Create a dataset %s reading data using %s. from %s".formatted(e.getOutputDataset(), e.getType(), e.getDescription());
             userMessages.add(new UserMessage(instruction));
         }
 
         for(ETLVertex e : actionNodes){
             String action = switch (e.getType()){
-                case "filter" -> "filter %s dataset with condition %s, and produce %s dataset.\n".formatted(e.getInputDataset(), e.getDescription(), e.getOutputDataset());
-                case "join" -> "join %s datasets on condition %s, and produce dataset %s.\n".formatted(e.getInputDataset(),e.getDescription(), e.getOutputDataset());
+                case "filter" -> "filter %s dataset with condition %s, and produce %s dataset".formatted(e.getInputDataset(), e.getDescription(), e.getOutputDataset());
+                case "join" -> "left join %s datasets on condition '%s'. Then produce dataset %s in pyspark".formatted(String.join(",",e.getInputDataset()),e.getDescription(), e.getOutputDataset());
                 default -> "";
             };
             userMessages.add(new UserMessage(action));
@@ -163,7 +163,7 @@ public class ETLServiceImpl implements ETLService {
 
 
         for(ETLVertex e : terminalNodes) {
-            String instruction = "Save a dataset %s to %s.\n".formatted(e.getInputDataset(), e.getType());
+            String instruction = "Write %s dataset into Apache Iceberg table %s, ex: aced_student_ds.writeTo(\"<table_name>\").create()".formatted(e.getInputDataset().stream().findFirst().get(),e.getDescription());
             userMessages.add(new UserMessage(instruction));
         }
 
@@ -202,9 +202,10 @@ public class ETLServiceImpl implements ETLService {
         UserMessage[] userMessages = messages.toArray(new UserMessage[0]);
 
         SystemMessage[] systemMessages = new SystemMessage[] {
-                new SystemMessage("You are a most efficient Apache Spark Developer"),
+                new SystemMessage("You are a most efficient PySpark 3.5.4 Developer"),
                 new SystemMessage("You only return the code. no explanation. don't add extensive comments. if explanation necessary add single line of comment"),
                 new SystemMessage("You only write a python script using given instruction utilising spark framework."),
+                new SystemMessage("Pay attention to joining instruction. some joining will be based on different columns. example ds1.col1=ds2.col2"),
                 new SystemMessage("You don't need to create test data"),
                 new SystemMessage("Some instruction might not be in order so see if one step depends on dataset from another later step. if so execute those steps first"),
         };
