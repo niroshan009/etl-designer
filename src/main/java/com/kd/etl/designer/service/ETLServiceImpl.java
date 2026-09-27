@@ -47,7 +47,6 @@ public class ETLServiceImpl implements ETLService {
             String source = edge.getSource();
             String target = edge.getTarget();
 
-            log.info("checking edge: {}, source: {}, target: {}", label, source, target);
             Node sourceNode = nodes.stream().filter(n -> n.getId().equals(source)).findFirst().orElse(null);
             Node targetNode = nodes.stream().filter(n -> n.getId().equals(target)).findFirst().orElse(null);
 
@@ -55,7 +54,6 @@ public class ETLServiceImpl implements ETLService {
             ETLVertex targetVertex = null;
 
             if (sourceNode != null) {
-                log.info("adding a source node. node id: {} ", sourceNode.getId());
 
                 sourceVertex = new ETLVertex();
                 sourceVertex.setId(sourceNode.getId());
@@ -76,12 +74,10 @@ public class ETLServiceImpl implements ETLService {
 
             if (targetNode != null) {
 
-                log.info("adding a target node {}", targetNode.getId());
                 targetVertex = new ETLVertex();
                 targetVertex.setId(targetNode.getId());
 
                 if (null != etlGraph.getVertex(targetVertex)) {
-                    log.info("target node exists as source node");
                     ETLVertex existingVertex = etlGraph.getVertex(targetVertex);
                     if (null == existingVertex.getInputDataset()) {
                         List<InputDataset> inputDs = new ArrayList<>();
@@ -94,7 +90,6 @@ public class ETLServiceImpl implements ETLService {
                     }
                     targetVertex = existingVertex;
                 } else {
-                    log.info("target node not added as source node");
                     List<InputDataset> inputDs = new ArrayList<>();
                     inputDs.add(new InputDataset(label, isRefData));
                     targetVertex.setType(targetNode.getType());
@@ -161,10 +156,6 @@ public class ETLServiceImpl implements ETLService {
 
         String script = generateScript(userMessages);
 
-        log.info("finished adding data");
-
-//        etlGraph.printGraph();
-
         return script;
 
     }
@@ -188,7 +179,6 @@ public class ETLServiceImpl implements ETLService {
 
 
     private String generateScript(List<Message> messages) {
-
 
         UserMessage[] userMessages = messages.toArray(new UserMessage[0]);
 
