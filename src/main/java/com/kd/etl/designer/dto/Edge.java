@@ -14,4 +14,6 @@ public class Edge {
     private String target;
 
     private String label;
+
+    private boolean isRefData;
 }

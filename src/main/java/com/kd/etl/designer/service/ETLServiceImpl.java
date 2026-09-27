@@ -1,25 +1,21 @@
 package com.kd.etl.designer.service;
 
-import com.kd.etl.designer.dto.Configuration;
-import com.kd.etl.designer.dto.ETLRequest;
-import com.kd.etl.designer.dto.Edge;
-import com.kd.etl.designer.dto.Node;
+import com.kd.etl.designer.dto.*;
 import com.kd.etl.designer.model.ETLGraph;
 import com.kd.etl.designer.model.ETLVertex;
 import lombok.extern.slf4j.Slf4j;
-import org.jspecify.annotations.Nullable;
 import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.chat.messages.AssistantMessage;
+import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.ollama.OllamaChatModel;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-
-import org.springframework.ai.chat.messages.Message;
-
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -30,7 +26,7 @@ public class ETLServiceImpl implements ETLService {
     private final ChatClient client;
 
     @Autowired
-    public ETLServiceImpl(OllamaChatModel chatModel, ChatClient.Builder chatClientBuilder){
+    public ETLServiceImpl(OllamaChatModel chatModel, ChatClient.Builder chatClientBuilder) {
         this.chatModel = chatModel;
         this.client = chatClientBuilder.build();
     }
@@ -45,8 +41,9 @@ public class ETLServiceImpl implements ETLService {
 
         ETLGraph<ETLVertex> etlGraph = new ETLGraph<>();
 
-        for(Edge edge : edges){
+        for (Edge edge : edges) {
             String label = edge.getLabel();
+            Boolean isRefData = edge.isRefData();
             String source = edge.getSource();
             String target = edge.getTarget();
 
@@ -57,7 +54,7 @@ public class ETLServiceImpl implements ETLService {
             ETLVertex sourceVertex = null;
             ETLVertex targetVertex = null;
 
-            if(sourceNode != null){
+            if (sourceNode != null) {
                 log.info("adding a source node. node id: {} ", sourceNode.getId());
 
                 sourceVertex = new ETLVertex();
@@ -65,7 +62,7 @@ public class ETLServiceImpl implements ETLService {
 
                 if (null != etlGraph.getVertex(sourceVertex)) {
                     ETLVertex existingVertex = etlGraph.getVertex(sourceVertex);
-                    if(existingVertex != null) {
+                    if (existingVertex != null) {
                         existingVertex.setOutputDataset(label);
                     }
 
@@ -77,28 +74,29 @@ public class ETLServiceImpl implements ETLService {
                 }
             }
 
-            if(targetNode != null){
+            if (targetNode != null) {
 
-                log.info("adding a target node {}",targetNode.getId());
+                log.info("adding a target node {}", targetNode.getId());
                 targetVertex = new ETLVertex();
                 targetVertex.setId(targetNode.getId());
 
                 if (null != etlGraph.getVertex(targetVertex)) {
                     log.info("target node exists as source node");
                     ETLVertex existingVertex = etlGraph.getVertex(targetVertex);
-                    if(null == existingVertex.getInputDataset())
-                    {
-                        List<String> inputDs = new ArrayList<>();
-                        inputDs.add(label);
+                    if (null == existingVertex.getInputDataset()) {
+                        List<InputDataset> inputDs = new ArrayList<>();
+
+
+                        inputDs.add(new InputDataset(label, isRefData));
                         existingVertex.setInputDataset(inputDs);
                     } else {
-                        existingVertex.getInputDataset().add(label);
+                        existingVertex.getInputDataset().add(new InputDataset(label, isRefData));
                     }
                     targetVertex = existingVertex;
                 } else {
                     log.info("target node not added as source node");
-                    List<String> inputDs = new ArrayList<>();
-                    inputDs.add(label);
+                    List<InputDataset> inputDs = new ArrayList<>();
+                    inputDs.add(new InputDataset(label, isRefData));
                     targetVertex.setType(targetNode.getType());
                     targetVertex.setInputDataset(inputDs);
                     targetVertex.setDescription(targetNode.getDescription());
@@ -107,63 +105,57 @@ public class ETLServiceImpl implements ETLService {
 
             }
 
-            if(null != sourceVertex && null != targetVertex) {
-                etlGraph.addEdge(sourceVertex,targetVertex);
+            if (null != sourceVertex && null != targetVertex) {
+                etlGraph.addEdge(sourceVertex, targetVertex);
             }
         }
 
 
         Set<ETLVertex> sourceNodes = getSourceNodes(etlGraph);
         Set<ETLVertex> terminalNodes = getTerminalNodes(etlGraph);
-        LinkedList<ETLVertex> actionNodes = new LinkedList<>();
 
-        etlGraph.getAdjacencyList()
+        List<ETLVertex> filteredEtlVertexes = etlGraph.getAdjacencyList()
                 .entrySet()
                 .stream()
                 .filter(e -> !sourceNodes.contains(e.getKey()))
                 .filter(e -> !terminalNodes.contains(e.getKey()))
-                .forEach(e -> {
-                        List<ETLVertex> targetNodes  = e.getValue();
-                        for (ETLVertex targetNode : targetNodes) {
-                            if (!actionNodes.contains(targetNode)) {
-                                actionNodes.add(e.getKey());
-                            } else {
-                                int index = actionNodes.indexOf(targetNode);
-                                actionNodes.add(index, e.getKey());
-                            }
-                            System.out.println("heere");
+                .map(e -> e.getKey())
+                .collect(Collectors.toList());
 
-                    }
-                });
-
-
-
+        Collections.sort(filteredEtlVertexes);
 
         List<Message> userMessages = new ArrayList<>();
         userMessages.add(new UserMessage("Set below configuration for spark job"));
 
-        for(Configuration configuration : etlRequest.getConfiguration()){
-            userMessages.add(new UserMessage("Key: "+configuration.getConfig()+", Value: "+configuration.getValue()));
+        for (Configuration configuration : etlRequest.getConfiguration()) {
+            userMessages.add(new UserMessage("Key: " + configuration.getConfig() + ", Value: " + configuration.getValue()));
         }
         userMessages.add(new UserMessage("Below is the spark dataflow"));
 
-        for(ETLVertex e : sourceNodes) {
+        for (ETLVertex e : sourceNodes) {
             String instruction = "Create a dataset %s reading data using %s. from %s".formatted(e.getOutputDataset(), e.getType(), e.getDescription());
             userMessages.add(new UserMessage(instruction));
         }
 
-        for(ETLVertex e : actionNodes){
-            String action = switch (e.getType()){
-                case "filter" -> "filter %s dataset with condition %s, and produce %s dataset".formatted(e.getInputDataset(), e.getDescription(), e.getOutputDataset());
-                case "join" -> "left join %s datasets on condition '%s'. Then produce dataset %s in pyspark".formatted(String.join(",",e.getInputDataset()),e.getDescription(), e.getOutputDataset());
+        for (ETLVertex e : filteredEtlVertexes) {
+            String inputDataset = String.join(",", e.getInputDataset().stream().map(l -> l.getDataset()).collect(Collectors.toSet()));
+            String sourceDataset = String.join(",", e.getInputDataset().stream().filter(l -> !l.isRefData()).map(l -> l.getDataset()).collect(Collectors.toSet()));
+            String referenceDataset = String.join(",", e.getInputDataset().stream().filter(l -> l.isRefData()).map(l -> l.getDataset()).collect(Collectors.toSet()));
+            String action = switch (e.getType()) {
+                case "filter" ->
+                        "filter %s dataset with condition %s, and produce %s dataset".formatted(inputDataset, e.getDescription(), e.getOutputDataset());
+                case "join" ->
+                        "left join %s datasets on condition '%s'. Then produce dataset %s in pyspark".formatted(inputDataset, e.getDescription(), e.getOutputDataset());
+                case "left-anti-join" ->
+                        "left anti join %s on reference dataset %s with condition %s".formatted(sourceDataset, referenceDataset, e.getDescription());
                 default -> "";
             };
             userMessages.add(new UserMessage(action));
         }
 
 
-        for(ETLVertex e : terminalNodes) {
-            String instruction = "Write %s dataset into Apache Iceberg table %s, ex: aced_student_ds.writeTo(\"<table_name>\").create()".formatted(e.getInputDataset().stream().findFirst().get(),e.getDescription());
+        for (ETLVertex e : terminalNodes) {
+            String instruction = "Write %s dataset into Apache Iceberg table %s, ex: aced_student_ds.writeTo(\"<table_name>\").create()".formatted(e.getInputDataset().stream().findFirst().get(), e.getDescription());
             userMessages.add(new UserMessage(instruction));
         }
 
@@ -178,16 +170,15 @@ public class ETLServiceImpl implements ETLService {
     }
 
 
+    private Set<ETLVertex> getSourceNodes(ETLGraph<ETLVertex> etlGraph) {
 
-    private Set<ETLVertex> getSourceNodes(ETLGraph<ETLVertex> etlGraph){
-
-        Set<ETLVertex> etlVertices =  etlGraph.getAdjacencyList().keySet().stream()
+        Set<ETLVertex> etlVertices = etlGraph.getAdjacencyList().keySet().stream()
                 .filter(e -> e.getInputDataset() == null)
                 .collect(Collectors.toSet());
         return etlVertices;
     }
 
-    private Set<ETLVertex> getTerminalNodes(ETLGraph<ETLVertex> etlGraph){
+    private Set<ETLVertex> getTerminalNodes(ETLGraph<ETLVertex> etlGraph) {
         Set<ETLVertex> etlVertices = etlGraph.getAdjacencyList().keySet().stream()
                 .filter(e -> e.getOutputDataset() == null && etlGraph.getNeighbors(e).size() == 0)
                 .collect(Collectors.toSet());
@@ -196,12 +187,12 @@ public class ETLServiceImpl implements ETLService {
     }
 
 
-    private String generateScript(List<Message> messages){
+    private String generateScript(List<Message> messages) {
 
 
         UserMessage[] userMessages = messages.toArray(new UserMessage[0]);
 
-        SystemMessage[] systemMessages = new SystemMessage[] {
+        SystemMessage[] systemMessages = new SystemMessage[]{
                 new SystemMessage("You are a most efficient PySpark 3.5.4 Developer"),
                 new SystemMessage("You only return the code. no explanation. don't add extensive comments. if explanation necessary add single line of comment"),
                 new SystemMessage("You only write a python script using given instruction utilising spark framework."),
@@ -211,10 +202,10 @@ public class ETLServiceImpl implements ETLService {
         };
         Message[] finalMessages = new Message[systemMessages.length + userMessages.length];
 
-        System.arraycopy(systemMessages,0,finalMessages, 0, systemMessages.length);
+        System.arraycopy(systemMessages, 0, finalMessages, 0, systemMessages.length);
         System.arraycopy(userMessages, 0, finalMessages, systemMessages.length, userMessages.length);
 
-        String finalMessage =  client.prompt()
+        String finalMessage = client.prompt()
                 .messages(finalMessages)
                 .stream().content()
                 .collect(StringBuilder::new, StringBuilder::append)
