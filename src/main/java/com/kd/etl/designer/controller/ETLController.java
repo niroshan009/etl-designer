@@ -1,6 +1,7 @@
 package com.kd.etl.designer.controller;
 
 import com.kd.etl.designer.dto.ETLRequest;
+import com.kd.etl.designer.dto.SparkSubmitJobRequest;
 import com.kd.etl.designer.service.ETLService;
 import com.kd.etl.designer.service.ETLSubmitService;
 import lombok.extern.slf4j.Slf4j;
@@ -37,17 +38,17 @@ public class ETLController {
 
 
     @PostMapping(value="/create")
-    public ResponseEntity createJournal(@RequestBody ETLRequest etlRequest) {
+    public ResponseEntity createJournal(@RequestBody ETLRequest etlRequest) throws IOException {
         String script = etlService.generateGraph(etlRequest);
 
         log.info("Received script from LLM");
         return new ResponseEntity<>(script, HttpStatus.OK);
     }
 
-    @GetMapping(value = "/submitjob")
-    public ResponseEntity submitJob() throws IOException {
+    @PostMapping(value = "/submitjob")
+    public ResponseEntity submitJob(@RequestBody SparkSubmitJobRequest sparkSubmitJobRequest) throws IOException {
 
-        etlSubmitService.submitEtlService();
+        etlSubmitService.submitEtlService(sparkSubmitJobRequest);
         return new ResponseEntity(HttpStatus.OK);
     }
 }

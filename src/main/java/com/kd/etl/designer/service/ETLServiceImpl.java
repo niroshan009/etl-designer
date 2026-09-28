@@ -10,8 +10,16 @@ import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.ollama.OllamaChatModel;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.io.buffer.DataBuffer;
+import org.springframework.core.io.buffer.DataBufferUtils;
+import org.springframework.core.io.buffer.DefaultDataBufferFactory;
 import org.springframework.stereotype.Service;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -32,7 +40,7 @@ public class ETLServiceImpl implements ETLService {
     }
 
     @Override
-    public String generateGraph(ETLRequest etlRequest) {
+    public String generateGraph(ETLRequest etlRequest) throws IOException {
 
         List<Node> nodes = etlRequest.getNodes();
         List<Edge> edges = etlRequest.getEdges();
@@ -154,7 +162,8 @@ public class ETLServiceImpl implements ETLService {
             userMessages.add(new UserMessage(instruction));
         }
 
-        String script = generateScript(userMessages);
+        String script = generateScript(userMessages, etlRequest.getScriptName());
+
 
         return script;
 
@@ -178,7 +187,7 @@ public class ETLServiceImpl implements ETLService {
     }
 
 
-    private String generateScript(List<Message> messages) {
+    private String generateScript(List<Message> messages, String scriptName) throws IOException {
 
         UserMessage[] userMessages = messages.toArray(new UserMessage[0]);
 
@@ -195,15 +204,33 @@ public class ETLServiceImpl implements ETLService {
         System.arraycopy(systemMessages, 0, finalMessages, 0, systemMessages.length);
         System.arraycopy(userMessages, 0, finalMessages, systemMessages.length, userMessages.length);
 
-        String finalMessage = client.prompt()
+        Path outputPath = Paths.get(System.getProperty("user.dir"))
+                .resolve("src/main/resources")
+                .resolve(scriptName.replace(" ", "_") + ".MD");
+
+        try {
+            Files.createDirectories(outputPath.getParent());
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+
+
+        client.prompt()
                 .messages(finalMessages)
                 .stream().content()
-                .collect(StringBuilder::new, StringBuilder::append)
-                .map(StringBuilder::toString)
+                // FIX: Explicitly cast the map output to the parent DataBuffer interface
+                .map(chunk -> (DataBuffer) DefaultDataBufferFactory.sharedInstance.wrap(chunk.getBytes()))
+                .as(streamOfBuffers -> DataBufferUtils.write(
+                        streamOfBuffers,
+                        outputPath,
+                        StandardOpenOption.CREATE,
+                        StandardOpenOption.WRITE,
+                        StandardOpenOption.TRUNCATE_EXISTING
+                ))
                 .block();
 
-        return finalMessage;
 
+        return Files.readString(outputPath);
     }
 
 }
