@@ -64,7 +64,7 @@ public class ETLSubmitServiceImpl implements ETLSubmitService {
         log.info("submitting script {}", reportUrl.getFile());
 
         SparkLauncher launcher = new SparkLauncher()
-                .setAppName("my first pyspark")
+                .setAppName(reportUrl.getFile())
                 .setMaster("k8s://https://127.0.0.1:26443")
                 .setDeployMode("cluster")
                 .setSparkHome("/Users/kd/git/Tools/spark-3.5.0-bin-hadoop3-scala2.13")
@@ -79,20 +79,15 @@ public class ETLSubmitServiceImpl implements ETLSubmitService {
                 .setConf("spark.kubernetes.namespace", "spark")
                 .setConf("spark.kubernetes.authenticate.driver.serviceAccountName", "spark-sa")
                 .setConf("spark.hadoop.fs.s3a.endpoint", "http://rustfs.orb.local:9000")
-                .setConf("spark.hadoop.fs.s3a.path.style.access", "true") // Required for non-AWS S3 clones
+                .setConf("spark.hadoop.fs.s3a.path.style.access", "true")
                 .setConf("spark.hadoop.fs.s3a.connection.ssl.enabled", "false")
                 .setConf("spark.hadoop.fs.s3a.endpoint.region", "us-east-1")
                 .setConf("spark.kubernetes.file.upload.path", "local:///tmp")
                 .setConf("spark.kubernetes.driver.container.image.entrypoint.executable", "/bin/sh")
                 .setConf("spark.kubernetes.executor.container.image.entrypoint.executable", "/bin/sh")
-
-                // 3. Explicitly tell the Python driver process what file it is executing
                 .setConf("spark.kubernetes.driverEnv.PYSPARK_PRIMARY_RESOURCE", "s3a:/" + reportUrl.getFile());
-//
         SparkAppHandle handle = launcher.startApplication();
 
-        // attach a listener to get the status of the spark job
-        // if error in the spark job? exit with failure so scaledJob can handle retry : exit with success
         handle.addListener(new SparkAppHandle.Listener() {
             @Override
             public void stateChanged(SparkAppHandle h) {
