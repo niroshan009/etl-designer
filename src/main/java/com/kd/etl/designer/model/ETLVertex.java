@@ -50,10 +50,10 @@ public class ETLVertex implements Comparable {
         Set<String> inputDsNames = this.inputDataset.stream().map(e -> e.getDataset()).collect(Collectors.toSet());
 
         if(inputDsNames.contains(vertex.getOutputDataset())) {
-            return 1;
-        } else if (((ETLVertex) o).getInputDataset().stream().map(e-> e.getDataset()).collect(Collectors.toSet()).contains(this.outputDataset)) {
             return -1;
+        } else if (((ETLVertex) o).getInputDataset().stream().map(e-> e.getDataset()).collect(Collectors.toSet()).contains(this.outputDataset)) {
+            return 1;
         }
-        return -1;
+        return 0;
     }
 }

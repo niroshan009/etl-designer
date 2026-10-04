@@ -3,6 +3,7 @@ package com.kd.etl.designer.service;
 import com.kd.etl.designer.dto.*;
 import com.kd.etl.designer.model.ETLGraph;
 import com.kd.etl.designer.model.ETLVertex;
+import com.kd.etl.designer.utility.GraphSortUtility;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.messages.Message;
@@ -21,7 +22,6 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -42,10 +42,13 @@ public class ETLServiceImpl implements ETLService {
     @Override
     public String generateGraph(ETLRequest etlRequest) throws IOException {
 
+        String scriptName = etlRequest.getScriptName() == null || etlRequest.getScriptName().isBlank() ?
+                "temp_script" : etlRequest.getScriptName();
         List<Node> nodes = etlRequest.getNodes();
         List<Edge> edges = etlRequest.getEdges();
         log.info("nodes size {}", nodes.size());
         log.info("edges size {}", edges.size());
+        log.info("generating script {}", scriptName);
 
         ETLGraph<ETLVertex> etlGraph = new ETLGraph<>();
 
@@ -113,20 +116,6 @@ public class ETLServiceImpl implements ETLService {
             }
         }
 
-
-        Set<ETLVertex> sourceNodes = getSourceNodes(etlGraph);
-        Set<ETLVertex> terminalNodes = getTerminalNodes(etlGraph);
-
-        List<ETLVertex> filteredEtlVertexes = etlGraph.getAdjacencyList()
-                .entrySet()
-                .stream()
-                .filter(e -> !sourceNodes.contains(e.getKey()))
-                .filter(e -> !terminalNodes.contains(e.getKey()))
-                .map(e -> e.getKey())
-                .collect(Collectors.toList());
-
-        Collections.sort(filteredEtlVertexes);
-
         List<Message> userMessages = new ArrayList<>();
         userMessages.add(new UserMessage("Set below configuration for spark job"));
 
@@ -135,34 +124,30 @@ public class ETLServiceImpl implements ETLService {
         }
         userMessages.add(new UserMessage("Below is the spark dataflow"));
 
-        for (ETLVertex e : sourceNodes) {
-            String instruction = "Create a dataset %s reading data using %s. from %s".formatted(e.getOutputDataset(), e.getType(), e.getDescription());
-            userMessages.add(new UserMessage(instruction));
-        }
+        List<ETLVertex> orderedNodes = GraphSortUtility.topologicalSort(etlGraph.getAdjacencyList());
 
-        for (ETLVertex e : filteredEtlVertexes) {
-            String inputDataset = String.join(",", e.getInputDataset().stream().map(l -> l.getDataset()).collect(Collectors.toSet()));
-            String sourceDataset = String.join(",", e.getInputDataset().stream().filter(l -> !l.isRefData()).map(l -> l.getDataset()).collect(Collectors.toSet()));
-            String referenceDataset = String.join(",", e.getInputDataset().stream().filter(l -> l.isRefData()).map(l -> l.getDataset()).collect(Collectors.toSet()));
+        for (ETLVertex e : orderedNodes) {
+
+            String sourceDataset = e.getInputDataset() != null ? String.join(" and ", e.getInputDataset().stream().filter(l -> !l.isRefData()).map(l -> l.getDataset()).collect(Collectors.toSet())) : "";
+            String referenceDataset = e.getInputDataset() != null ? String.join(",", e.getInputDataset().stream().filter(l -> l.isRefData()).map(l -> l.getDataset()).collect(Collectors.toSet())) : "";
             String action = switch (e.getType()) {
+                case "csvreader" -> "Create a dataset by reading data from with parameters %s and assign result dataset to %s variable.".formatted(e.getDescription(), e.getOutputDataset());
                 case "filter" ->
-                        "filter %s dataset with condition %s, and produce %s dataset".formatted(inputDataset, e.getDescription(), e.getOutputDataset());
+                        "filter %s dataset with condition %s, and assign result dataset to %s variable.".formatted(sourceDataset, e.getDescription(), e.getOutputDataset());
                 case "join" ->
-                        "left join %s datasets on condition '%s'. Then produce dataset %s in pyspark".formatted(inputDataset, e.getDescription(), e.getOutputDataset());
+                        "left join %s datasets on condition '%s' and assign result dataset to %s variable.".formatted(sourceDataset, e.getDescription(), e.getOutputDataset());
                 case "left-anti-join" ->
-                        "left anti join %s on reference dataset %s with condition %s".formatted(sourceDataset, referenceDataset, e.getDescription());
+                        "Do left anti join on %s with reference dataset %s on condition %s and assign result dataset to  %s variable. Don't use col function when joining.".formatted(sourceDataset, referenceDataset, e.getDescription(), e.getOutputDataset());
+                case "drop-column" ->
+                        "drop columns %s from the %s dataset and assign to %s dataset.".formatted(e.getDescription(), sourceDataset, e.getOutputDataset());
+                case "icebergwriter" -> "Write %s dataset into Apache Iceberg table %s".formatted(sourceDataset, e.getDescription());
                 default -> "";
             };
             userMessages.add(new UserMessage(action));
         }
 
+        String script = generateScript(userMessages, scriptName);
 
-        for (ETLVertex e : terminalNodes) {
-            String instruction = "Write %s dataset into Apache Iceberg table %s, ex: aced_student_ds.writeTo(\"<table_name>\").create()".formatted(e.getInputDataset().stream().findFirst().get(), e.getDescription());
-            userMessages.add(new UserMessage(instruction));
-        }
-
-        String script = generateScript(userMessages, etlRequest.getScriptName());
 
 
         return script;
@@ -195,9 +180,8 @@ public class ETLServiceImpl implements ETLService {
                 new SystemMessage("You are a most efficient PySpark 3.5.4 Developer"),
                 new SystemMessage("You only return the code. no explanation. don't add extensive comments. if explanation necessary add single line of comment"),
                 new SystemMessage("You only write a python script using given instruction utilising spark framework."),
-                new SystemMessage("Pay attention to joining instruction. some joining will be based on different columns. example ds1.col1=ds2.col2"),
                 new SystemMessage("You don't need to create test data"),
-                new SystemMessage("Some instruction might not be in order so see if one step depends on dataset from another later step. if so execute those steps first"),
+                new SystemMessage("Generate code in the given order"),
         };
         Message[] finalMessages = new Message[systemMessages.length + userMessages.length];
 
@@ -228,8 +212,6 @@ public class ETLServiceImpl implements ETLService {
                         StandardOpenOption.TRUNCATE_EXISTING
                 ))
                 .block();
-
-
         return Files.readString(outputPath);
     }
 

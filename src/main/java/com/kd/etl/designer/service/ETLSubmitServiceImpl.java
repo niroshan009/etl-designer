@@ -34,10 +34,13 @@ public class ETLSubmitServiceImpl implements ETLSubmitService {
         System.setProperty("aws.secretAccessKey", "rustfsadmin");
         System.setProperty("aws.region", "us-east-1");
 
+        String scriptName = sparkSubmitJobRequest.getScriptName() == null || sparkSubmitJobRequest.getScriptName().isBlank() ?
+                "temp_script" : sparkSubmitJobRequest.getScriptName();
+
 
         Path outputPath = Paths.get(System.getProperty("user.dir"))
                 .resolve("src/main/resources")
-                .resolve(sparkSubmitJobRequest.getScriptName().replace(" ", "_") + ".MD");
+                .resolve(scriptName.replace(" ", "_") + ".MD");
 
         String filContent = Files.readString(outputPath).replaceAll("(?m)^```python\\s*$", "")
                 .replaceAll("(?m)^```\\s*$", "");
@@ -48,7 +51,7 @@ public class ETLSubmitServiceImpl implements ETLSubmitService {
         // 3. Build the request and set the ContentType to Python
         PutObjectRequest putObjectRequest = PutObjectRequest.builder()
                 .bucket("scripts")
-                .key(sparkSubmitJobRequest.getScriptName().replace(" ", "_") + ".py")
+                .key(scriptName.replace(" ", "_") + ".py")
                 .contentType("text/x-python") // Tells S3/browsers it's a Python script
                 .build();
 
@@ -57,11 +60,13 @@ public class ETLSubmitServiceImpl implements ETLSubmitService {
 
         URL reportUrl = s3Client.utilities().getUrl(GetUrlRequest.builder()
                 .bucket("scripts")
-                .key(sparkSubmitJobRequest.getScriptName().replace(" ", "_") + ".py")
+                .key(scriptName.replace(" ", "_") + ".py")
                 .build());
 
 
         log.info("submitting script {}", reportUrl.getFile());
+
+
 
         SparkLauncher launcher = new SparkLauncher()
                 .setAppName(reportUrl.getFile())
