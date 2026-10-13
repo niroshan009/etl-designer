@@ -79,6 +79,7 @@ public class ETLServiceImpl implements ETLService {
                     sourceVertex.setOutputDataset(label);
                     sourceVertex.setType(sourceNode.getType());
                     sourceVertex.setDescription(sourceNode.getDescription());
+                    sourceVertex.setConfigurations(sourceNode.getConfigurations());
                     etlGraph.addVertex(sourceVertex);
                 }
             }
@@ -106,6 +107,7 @@ public class ETLServiceImpl implements ETLService {
                     targetVertex.setType(targetNode.getType());
                     targetVertex.setInputDataset(inputDs);
                     targetVertex.setDescription(targetNode.getDescription());
+                    targetVertex.setConfigurations(targetNode.getConfigurations());
                     etlGraph.addVertex(targetVertex);
                 }
 
@@ -130,19 +132,24 @@ public class ETLServiceImpl implements ETLService {
 
             String sourceDataset = e.getInputDataset() != null ? String.join(" and ", e.getInputDataset().stream().filter(l -> !l.isRefData()).map(l -> l.getDataset()).collect(Collectors.toSet())) : "";
             String referenceDataset = e.getInputDataset() != null ? String.join(",", e.getInputDataset().stream().filter(l -> l.isRefData()).map(l -> l.getDataset()).collect(Collectors.toSet())) : "";
+            String config = String.join(",", e.getConfigurations().stream().map(element -> element.getConfig()+"="+element.getValue()).collect(Collectors.toSet()));
             String action = switch (e.getType()) {
-                case "csvreader" -> "Create a dataset by reading data from with parameters %s and assign result dataset to %s variable.".formatted(e.getDescription(), e.getOutputDataset());
+
+
+                case "csvreader" -> "Create a dataset by reading data from with configuration %s and assign result dataset to %s variable.".formatted(config, e.getOutputDataset());
                 case "filter" ->
-                        "filter %s dataset with condition %s, and assign result dataset to %s variable.".formatted(sourceDataset, e.getDescription(), e.getOutputDataset());
+                        "filter %s dataset with condition %s, and assign result dataset to %s variable.".formatted(sourceDataset, config, e.getOutputDataset());
                 case "join" ->
-                        "left join %s datasets on condition '%s' and assign result dataset to %s variable.".formatted(sourceDataset, e.getDescription(), e.getOutputDataset());
+                        "left join %s datasets on condition '%s' and assign result dataset to %s variable.".formatted(sourceDataset, config, e.getOutputDataset());
                 case "left-anti-join" ->
-                        "Do left anti join on %s with reference dataset %s on condition %s and assign result dataset to  %s variable. Don't use col function when joining.".formatted(sourceDataset, referenceDataset, e.getDescription(), e.getOutputDataset());
+                        "Do left anti join on %s with reference dataset %s on condition %s and assign result dataset to  %s variable. Don't use col function when joining.".formatted(sourceDataset, referenceDataset, config, e.getOutputDataset());
                 case "drop-column" ->
-                        "drop columns %s from the %s dataset and assign to %s dataset.".formatted(e.getDescription(), sourceDataset, e.getOutputDataset());
-                case "icebergwriter" -> "Write %s dataset into Apache Iceberg table %s".formatted(sourceDataset, e.getDescription());
+                        "drop columns %s from the %s dataset and assign to %s dataset.".formatted(config, sourceDataset, e.getOutputDataset());
+                case "icebergwriter" -> "Write %s dataset into Apache Iceberg table %s".formatted(sourceDataset, config);
                 default -> "";
+
             };
+            log.info(action);
             userMessages.add(new UserMessage(action));
         }
 

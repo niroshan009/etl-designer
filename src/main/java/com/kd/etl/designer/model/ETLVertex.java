@@ -1,5 +1,6 @@
 package com.kd.etl.designer.model;
 
+import com.kd.etl.designer.dto.Configuration;
 import com.kd.etl.designer.dto.InputDataset;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -24,6 +25,8 @@ public class ETLVertex implements Comparable {
     private String type;
 
     private String description;
+
+    private List<Configuration> configurations;
 
     @Override
     public boolean equals(Object o) {
