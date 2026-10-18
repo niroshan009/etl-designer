@@ -1,29 +1,27 @@
 package com.kd.etl.designer.service;
 
+import com.kd.etl.designer.config.PromptRegistry;
 import com.kd.etl.designer.dto.*;
 import com.kd.etl.designer.model.ETLGraph;
 import com.kd.etl.designer.model.ETLVertex;
 import com.kd.etl.designer.utility.GraphSortUtility;
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.NonNull;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.ollama.OllamaChatModel;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.core.io.buffer.DataBuffer;
-import org.springframework.core.io.buffer.DataBufferUtils;
-import org.springframework.core.io.buffer.DefaultDataBufferFactory;
 import org.springframework.stereotype.Service;
+import reactor.core.publisher.Flux;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -32,16 +30,17 @@ public class ETLServiceImpl implements ETLService {
 
     private final OllamaChatModel chatModel;
     private final ChatClient client;
+    private final PromptRegistry promptRegistry;
 
     @Autowired
-    public ETLServiceImpl(OllamaChatModel chatModel, ChatClient.Builder chatClientBuilder) {
+    public ETLServiceImpl(OllamaChatModel chatModel, ChatClient.Builder chatClientBuilder, PromptRegistry promptRegistry) {
         this.chatModel = chatModel;
         this.client = chatClientBuilder.build();
+        this.promptRegistry = promptRegistry;
     }
 
     @Override
-    public String generateGraph(ETLRequest etlRequest) throws IOException {
-
+    public Flux<String> generateGraphStream(ETLRequest etlRequest) throws IOException {
         String scriptName = etlRequest.getScriptName() == null || etlRequest.getScriptName().isBlank() ?
                 "temp_script" : etlRequest.getScriptName();
         List<Node> nodes = etlRequest.getNodes();
@@ -50,6 +49,69 @@ public class ETLServiceImpl implements ETLService {
         log.info("edges size {}", edges.size());
         log.info("generating script {}", scriptName);
 
+
+
+        List<Message> userMessages = new ArrayList<>();
+        userMessages.add(new UserMessage("Set below configuration for spark job"));
+
+        for (Configuration configuration : etlRequest.getConfiguration()) {
+            userMessages.add(new UserMessage("Key: " + configuration.getConfig() + ", Value: " + configuration.getValue()));
+        }
+        userMessages.add(new UserMessage("Below is the spark dataflow"));
+
+        List<ETLVertex> orderedNodes = createEtlGraph(edges, nodes);
+
+        for (ETLVertex e : orderedNodes) {
+
+            String sourceDataset = e.getInputDataset() != null ? String.join(" and ", e.getInputDataset().stream().filter(l -> !l.isRefData()).map(l -> l.getDataset()).collect(Collectors.toSet())) : "";
+            String referenceDataset = e.getInputDataset() != null ? String.join(",", e.getInputDataset().stream().filter(l -> l.isRefData()).map(l -> l.getDataset()).collect(Collectors.toSet())) : "";
+            String config = String.join(",", e.getConfigurations().stream().map(element -> element.getConfig()+"="+element.getValue()).collect(Collectors.toSet()));
+            String action = getActionPrompt(e, sourceDataset, config, referenceDataset);
+            log.info(action);
+            userMessages.add(new UserMessage(action));
+        }
+        return generateScriptAsStream(userMessages, scriptName);
+    }
+
+    private @NonNull String getActionPrompt(ETLVertex e, String sourceDataset, String config, String referenceDataset) {
+        String action = switch (e.getType()) {
+            case "csvreader" -> {
+                String path = e.getConfigurations().stream().filter(conf -> conf.getConfig().equalsIgnoreCase("filePath")).findFirst().get().getValue();
+                e.getConfigurations().removeIf(conf -> conf.getConfig().equalsIgnoreCase("filePath"));
+                String csvConfig = String.join(" , ", e.getConfigurations().stream().map(element -> element.getConfig()+"="+element.getValue()).collect(Collectors.toSet()));
+                yield promptRegistry.get(e.getType()).formatted(path, csvConfig, e.getOutputDataset());
+            }
+            case "filter" -> {
+
+                yield promptRegistry.get(e.getType()).formatted(sourceDataset, config, e.getOutputDataset());
+            }
+            case "left-join" -> {
+                String condition = String.join(" ", e.getConfigurations().stream().map(element -> element.getValue()).collect(Collectors.toSet()));
+                yield promptRegistry.get(e.getType()).formatted(sourceDataset, condition, e.getOutputDataset());
+            }
+            case "left-anti-join" -> {
+
+                yield promptRegistry.get(e.getType()).formatted(sourceDataset, referenceDataset, config, e.getOutputDataset());
+            }
+            case "drop-column" -> {
+                String columnsToDrop = String.join(" , ", e.getConfigurations().stream().map(element -> element.getValue()).collect(Collectors.toSet()));
+                yield promptRegistry.get(e.getType()).formatted(columnsToDrop, sourceDataset, e.getOutputDataset());
+            }
+            case "icebergwriter" -> {
+                yield promptRegistry.get(e.getType()).formatted(sourceDataset, config);
+            }
+            case "databasewriter" -> {
+                String databaseType = e.getConfigurations().stream().filter(element -> element.getConfig().equalsIgnoreCase("databaseType")).findFirst().get().getValue();
+                e.getConfigurations().removeIf(conf -> conf.getConfig().equalsIgnoreCase("databaseType"));
+                String dbConfiguration = String.join(" , ", e.getConfigurations().stream().map(element -> element.getConfig()+"="+element.getValue()).collect(Collectors.toSet()));
+                yield promptRegistry.get(e.getType()).formatted(databaseType, dbConfiguration);
+            }
+            default -> "";
+        };
+        return action;
+    }
+
+    private static @NonNull List<ETLVertex> createEtlGraph(List<Edge> edges, List<Node> nodes) {
         ETLGraph<ETLVertex> etlGraph = new ETLGraph<>();
 
         for (Edge edge : edges) {
@@ -117,78 +179,18 @@ public class ETLServiceImpl implements ETLService {
                 etlGraph.addEdge(sourceVertex, targetVertex);
             }
         }
-
-        List<Message> userMessages = new ArrayList<>();
-        userMessages.add(new UserMessage("Set below configuration for spark job"));
-
-        for (Configuration configuration : etlRequest.getConfiguration()) {
-            userMessages.add(new UserMessage("Key: " + configuration.getConfig() + ", Value: " + configuration.getValue()));
-        }
-        userMessages.add(new UserMessage("Below is the spark dataflow"));
-
-        List<ETLVertex> orderedNodes = GraphSortUtility.topologicalSort(etlGraph.getAdjacencyList());
-
-        for (ETLVertex e : orderedNodes) {
-
-            String sourceDataset = e.getInputDataset() != null ? String.join(" and ", e.getInputDataset().stream().filter(l -> !l.isRefData()).map(l -> l.getDataset()).collect(Collectors.toSet())) : "";
-            String referenceDataset = e.getInputDataset() != null ? String.join(",", e.getInputDataset().stream().filter(l -> l.isRefData()).map(l -> l.getDataset()).collect(Collectors.toSet())) : "";
-            String config = String.join(",", e.getConfigurations().stream().map(element -> element.getConfig()+"="+element.getValue()).collect(Collectors.toSet()));
-            String action = switch (e.getType()) {
-
-
-                case "csvreader" -> "Create a dataset by reading data from with configuration %s and assign result dataset to %s variable.".formatted(config, e.getOutputDataset());
-                case "filter" ->
-                        "filter %s dataset with condition %s, and assign result dataset to %s variable.".formatted(sourceDataset, config, e.getOutputDataset());
-                case "join" ->
-                        "left join %s datasets on condition '%s' and assign result dataset to %s variable.".formatted(sourceDataset, config, e.getOutputDataset());
-                case "left-anti-join" ->
-                        "Do left anti join on %s with reference dataset %s on condition %s and assign result dataset to  %s variable. Don't use col function when joining.".formatted(sourceDataset, referenceDataset, config, e.getOutputDataset());
-                case "drop-column" ->
-                        "drop columns %s from the %s dataset and assign to %s dataset.".formatted(config, sourceDataset, e.getOutputDataset());
-                case "icebergwriter" -> "Write %s dataset into Apache Iceberg table %s".formatted(sourceDataset, config);
-                default -> "";
-
-            };
-            log.info(action);
-            userMessages.add(new UserMessage(action));
-        }
-
-        String script = generateScript(userMessages, scriptName);
-
-
-
-        return script;
-
+        return GraphSortUtility.topologicalSort(etlGraph.getAdjacencyList());
     }
 
-
-    private Set<ETLVertex> getSourceNodes(ETLGraph<ETLVertex> etlGraph) {
-
-        Set<ETLVertex> etlVertices = etlGraph.getAdjacencyList().keySet().stream()
-                .filter(e -> e.getInputDataset() == null)
-                .collect(Collectors.toSet());
-        return etlVertices;
-    }
-
-    private Set<ETLVertex> getTerminalNodes(ETLGraph<ETLVertex> etlGraph) {
-        Set<ETLVertex> etlVertices = etlGraph.getAdjacencyList().keySet().stream()
-                .filter(e -> e.getOutputDataset() == null && etlGraph.getNeighbors(e).size() == 0)
-                .collect(Collectors.toSet());
-
-        return etlVertices;
-    }
-
-
-    private String generateScript(List<Message> messages, String scriptName) throws IOException {
-
+    private Flux<String> generateScriptAsStream(List<Message> messages, String scriptName) throws IOException {
         UserMessage[] userMessages = messages.toArray(new UserMessage[0]);
-
         SystemMessage[] systemMessages = new SystemMessage[]{
-                new SystemMessage("You are a most efficient PySpark 3.5.4 Developer"),
-                new SystemMessage("You only return the code. no explanation. don't add extensive comments. if explanation necessary add single line of comment"),
-                new SystemMessage("You only write a python script using given instruction utilising spark framework."),
-                new SystemMessage("You don't need to create test data"),
-                new SystemMessage("Generate code in the given order"),
+                new SystemMessage("You are a most efficient PySpark 3.5.4 Developer."),
+                new SystemMessage("Only return the code. no explanation. don't add extensive comments. if explanation necessary add single line of comment."),
+                new SystemMessage("Only write a python script using given instruction utilising pySpark framework."),
+                new SystemMessage("Don't need to create test data."),
+                new SystemMessage("Use option() chain when passing the configuration. ex: .option(\"delimiter\", \",\")."),
+                new SystemMessage("Generate code in the given order."),
         };
         Message[] finalMessages = new Message[systemMessages.length + userMessages.length];
 
@@ -206,20 +208,13 @@ public class ETLServiceImpl implements ETLService {
         }
 
 
-        client.prompt()
+        Flux<String> tokenStream =  client.prompt()
                 .messages(finalMessages)
-                .stream().content()
-                // FIX: Explicitly cast the map output to the parent DataBuffer interface
-                .map(chunk -> (DataBuffer) DefaultDataBufferFactory.sharedInstance.wrap(chunk.getBytes()))
-                .as(streamOfBuffers -> DataBufferUtils.write(
-                        streamOfBuffers,
-                        outputPath,
-                        StandardOpenOption.CREATE,
-                        StandardOpenOption.WRITE,
-                        StandardOpenOption.TRUNCATE_EXISTING
-                ))
-                .block();
-        return Files.readString(outputPath);
-    }
+                .stream().content();
 
+        return tokenStream
+                .bufferUntil(token -> token.contains("\n") || token.contains("\r"), true)
+                .map(tokenList -> String.join("", tokenList))
+                .map(line -> line);
+    }
 }

@@ -1,11 +1,11 @@
 package com.kd.etl.designer.service;
 
 import com.kd.etl.designer.dto.ETLRequest;
-import org.springframework.stereotype.Service;
+import reactor.core.publisher.Flux;
 
 import java.io.IOException;
 
 public interface ETLService {
 
-    public String generateGraph(ETLRequest etlRequest) throws IOException;
+    Flux<String> generateGraphStream(ETLRequest etlRequest) throws IOException;
 }
