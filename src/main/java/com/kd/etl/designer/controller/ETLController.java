@@ -12,9 +12,9 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import reactor.core.publisher.Flux;
 
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 
 @Slf4j
 @RestController()
@@ -37,17 +37,14 @@ public class ETLController {
     }
 
 
-    @PostMapping(value="/create")
-    public ResponseEntity createJournal(@RequestBody ETLRequest etlRequest) throws IOException {
-        String script = etlService.generateGraph(etlRequest);
-
+    @PostMapping(value="/create", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public Flux<String> createJournal(@RequestBody ETLRequest etlRequest) throws IOException {
         log.info("Received script from LLM");
-        return new ResponseEntity<>(script, HttpStatus.OK);
+        return etlService.generateGraphStream(etlRequest);
     }
 
     @PostMapping(value = "/submitjob")
     public ResponseEntity submitJob(@RequestBody SparkSubmitJobRequest sparkSubmitJobRequest) throws IOException {
-
         etlSubmitService.submitEtlService(sparkSubmitJobRequest);
         return new ResponseEntity(HttpStatus.OK);
     }
