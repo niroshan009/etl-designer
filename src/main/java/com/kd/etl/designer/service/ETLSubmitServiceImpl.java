@@ -39,7 +39,7 @@ public class ETLSubmitServiceImpl implements ETLSubmitService {
 
 
         Path outputPath = Paths.get(System.getProperty("user.dir"))
-                .resolve("src/main/resources")
+                .resolve("src/main/resources/scripts")
                 .resolve(scriptName.replace(" ", "_") + ".MD");
 
         String filContent = Files.readString(outputPath).replaceAll("(?m)^```python\\s*$", "")

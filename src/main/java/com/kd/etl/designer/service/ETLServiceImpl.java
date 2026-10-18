@@ -13,6 +13,10 @@ import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.ollama.OllamaChatModel;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.io.buffer.DataBuffer;
+import org.springframework.core.io.buffer.DataBufferUtils;
+import org.springframework.core.io.buffer.DefaultDataBufferFactory;
+
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 
@@ -20,8 +24,10 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.Executor;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -31,12 +37,14 @@ public class ETLServiceImpl implements ETLService {
     private final OllamaChatModel chatModel;
     private final ChatClient client;
     private final PromptRegistry promptRegistry;
+    private final Executor executor;
 
     @Autowired
-    public ETLServiceImpl(OllamaChatModel chatModel, ChatClient.Builder chatClientBuilder, PromptRegistry promptRegistry) {
+    public ETLServiceImpl(OllamaChatModel chatModel, ChatClient.Builder chatClientBuilder, PromptRegistry promptRegistry, Executor executor) {
         this.chatModel = chatModel;
         this.client = chatClientBuilder.build();
         this.promptRegistry = promptRegistry;
+        this.executor = executor;
     }
 
     @Override
@@ -198,19 +206,38 @@ public class ETLServiceImpl implements ETLService {
         System.arraycopy(userMessages, 0, finalMessages, systemMessages.length, userMessages.length);
 
         Path outputPath = Paths.get(System.getProperty("user.dir"))
-                .resolve("src/main/resources")
+                .resolve("src/main/resources/scripts")
                 .resolve(scriptName.replace(" ", "_") + ".MD");
 
         try {
             Files.createDirectories(outputPath.getParent());
         } catch (IOException e) {
+            log.error("Could not create a script");
             throw new RuntimeException(e);
         }
 
 
         Flux<String> tokenStream =  client.prompt()
                 .messages(finalMessages)
-                .stream().content();
+                .stream().content()
+                .share();
+
+        executor.execute(() -> {
+                log.info("writing data to file {}", outputPath);
+            try {
+                tokenStream
+                        .map(chunk -> (DataBuffer) DefaultDataBufferFactory.sharedInstance.wrap(chunk.getBytes()))
+                        .as(streamOfBuffer -> DataBufferUtils.write(streamOfBuffer, outputPath,
+                                StandardOpenOption.CREATE,
+                                StandardOpenOption.WRITE,
+                                StandardOpenOption.TRUNCATE_EXISTING
+                        ))
+                        .block();
+                log.info("Finished writing data to file.");
+            } catch (Exception e) {
+                log.error("Failed to write data to file", e);
+            }
+        });
 
         return tokenStream
                 .bufferUntil(token -> token.contains("\n") || token.contains("\r"), true)
