@@ -19,7 +19,6 @@ import java.io.IOException;
 @Slf4j
 @RestController()
 @RequestMapping("/etl")
-@CrossOrigin(origins = "http://localhost:5173")
 public class ETLController {
 
     private final OllamaChatModel chatModel;
