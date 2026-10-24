@@ -1,5 +1,6 @@
 package com.kd.etl.designer.service;
 
+import com.kd.etl.designer.config.ETLProperties;
 import com.kd.etl.designer.dto.SparkSubmitJobRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.spark.launcher.SparkAppHandle;
@@ -11,7 +12,6 @@ import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.GetUrlRequest;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.model.PutObjectResponse;
-
 
 import java.io.IOException;
 import java.net.URL;
@@ -27,35 +27,33 @@ public class ETLSubmitServiceImpl implements ETLSubmitService {
     @Autowired
     private S3Client s3Client;
 
+    @Autowired
+    private ETLProperties etlProperties;
+
     @Override
     public void submitEtlService(SparkSubmitJobRequest sparkSubmitJobRequest) throws IOException {
 
-        System.setProperty("aws.accessKeyId", "rustfsadmin");
-        System.setProperty("aws.secretAccessKey", "rustfsadmin");
-        System.setProperty("aws.region", "us-east-1");
+        System.setProperty("aws.accessKeyId", etlProperties.getAccessKey());
+        System.setProperty("aws.secretAccessKey", etlProperties.getSecretKey());
+        System.setProperty("aws.region", etlProperties.getEndpointRegion());
 
         String scriptName = sparkSubmitJobRequest.getScriptName() == null || sparkSubmitJobRequest.getScriptName().isBlank() ?
                 "temp_script" : sparkSubmitJobRequest.getScriptName();
 
 
         Path outputPath = Paths.get(System.getProperty("user.dir"))
-                .resolve("src/main/resources/scripts")
+                .resolve(etlProperties.getScriptOutputPath())
                 .resolve(scriptName.replace(" ", "_") + ".MD");
 
         String filContent = Files.readString(outputPath).replaceAll("(?m)^```python\\s*$", "")
                 .replaceAll("(?m)^```\\s*$", "");
 
-        System.out.println(filContent);
-
-
-        // 3. Build the request and set the ContentType to Python
         PutObjectRequest putObjectRequest = PutObjectRequest.builder()
                 .bucket("scripts")
                 .key(scriptName.replace(" ", "_") + ".py")
-                .contentType("text/x-python") // Tells S3/browsers it's a Python script
+                .contentType("text/x-python")
                 .build();
 
-        // 4. Upload the code string directly
         PutObjectResponse putObjectResponse = s3Client.putObject(putObjectRequest, RequestBody.fromString(filContent));
 
         URL reportUrl = s3Client.utilities().getUrl(GetUrlRequest.builder()
@@ -63,31 +61,30 @@ public class ETLSubmitServiceImpl implements ETLSubmitService {
                 .key(scriptName.replace(" ", "_") + ".py")
                 .build());
 
-
         log.info("submitting script {}", reportUrl.getFile());
-
-
 
         SparkLauncher launcher = new SparkLauncher()
                 .setAppName(reportUrl.getFile())
-                .setMaster("k8s://https://127.0.0.1:26443")
+                .setMaster(etlProperties.getSparkMaster())
                 .setDeployMode("cluster")
-                .setSparkHome("/Users/kd/git/Tools/spark-3.5.0-bin-hadoop3-scala2.13")
+                .setSparkHome(etlProperties.getSparkHome())
                 .setAppResource("s3a:/" + reportUrl.getFile())
-                .setConf("spark.hadoop.fs.s3a.access.key", "rustfsadmin")
-                .setConf("spark.hadoop.fs.s3a.secret.key", "rustfsadmin")
-                .setConf("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
-                .setConf("spark.executor.instances", "1")
-                .setConf("spark.kubernetes.executor.deleteOnTermination", "false")
-                .setConf("spark.kubernetes.container.image", "pyspark-iceberg:latest")
-                .setConf("spark.kubernetes.container.image.pullPolicy", "IfNotPresent")
-                .setConf("spark.kubernetes.namespace", "spark")
-                .setConf("spark.kubernetes.authenticate.driver.serviceAccountName", "spark-sa")
-                .setConf("spark.hadoop.fs.s3a.endpoint", "http://rustfs.orb.local:9000")
+                .setConf("spark.hadoop.fs.s3a.access.key", etlProperties.getHadoop().getS3().getAccessKey())
+                .setConf("spark.hadoop.fs.s3a.secret.key", etlProperties.getHadoop().getS3().getSecretKey())
+                .setConf("spark.hadoop.fs.s3a.endpoint", etlProperties.getHadoop().getS3().getEndpoint())
                 .setConf("spark.hadoop.fs.s3a.path.style.access", "true")
-                .setConf("spark.hadoop.fs.s3a.connection.ssl.enabled", "false")
-                .setConf("spark.hadoop.fs.s3a.endpoint.region", "us-east-1")
-                .setConf("spark.kubernetes.file.upload.path", "local:///tmp")
+                .setConf("spark.hadoop.fs.s3a.connection.ssl.enabled", etlProperties.getHadoop().getS3().getSslEnabled())
+                .setConf("spark.hadoop.fs.s3a.endpoint.region", etlProperties.getHadoop().getS3().getEndpointRegion())
+                .setConf("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
+
+                .setConf("spark.executor.instances", "1")
+
+                .setConf("spark.kubernetes.executor.deleteOnTermination", "false")
+                .setConf("spark.kubernetes.container.image", etlProperties.getKube().getContainerImage())
+                .setConf("spark.kubernetes.container.image.pullPolicy", "IfNotPresent")
+                .setConf("spark.kubernetes.namespace", etlProperties.getKube().getNamespace())
+                .setConf("spark.kubernetes.authenticate.driver.serviceAccountName", etlProperties.getKube().getServiceAccountName())
+                .setConf("spark.kubernetes.file.upload.path", etlProperties.getKube().getFileUploadPath())
                 .setConf("spark.kubernetes.driver.container.image.entrypoint.executable", "/bin/sh")
                 .setConf("spark.kubernetes.executor.container.image.entrypoint.executable", "/bin/sh")
                 .setConf("spark.kubernetes.driverEnv.PYSPARK_PRIMARY_RESOURCE", "s3a:/" + reportUrl.getFile());
