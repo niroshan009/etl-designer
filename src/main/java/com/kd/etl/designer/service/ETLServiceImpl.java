@@ -1,5 +1,6 @@
 package com.kd.etl.designer.service;
 
+import com.kd.etl.designer.config.ETLProperties;
 import com.kd.etl.designer.config.PromptRegistry;
 import com.kd.etl.designer.dto.*;
 import com.kd.etl.designer.model.ETLGraph;
@@ -38,13 +39,15 @@ public class ETLServiceImpl implements ETLService {
     private final ChatClient client;
     private final PromptRegistry promptRegistry;
     private final Executor executor;
+    private final ETLProperties etlProperties;
 
     @Autowired
-    public ETLServiceImpl(OllamaChatModel chatModel, ChatClient.Builder chatClientBuilder, PromptRegistry promptRegistry, Executor executor) {
+    public ETLServiceImpl(OllamaChatModel chatModel, ChatClient.Builder chatClientBuilder, PromptRegistry promptRegistry, Executor executor,ETLProperties etlProperties) {
         this.chatModel = chatModel;
         this.client = chatClientBuilder.build();
         this.promptRegistry = promptRegistry;
         this.executor = executor;
+        this.etlProperties = etlProperties;
     }
 
     @Override
@@ -206,7 +209,7 @@ public class ETLServiceImpl implements ETLService {
         System.arraycopy(userMessages, 0, finalMessages, systemMessages.length, userMessages.length);
 
         Path outputPath = Paths.get(System.getProperty("user.dir"))
-                .resolve("src/main/resources/scripts")
+                .resolve(etlProperties.getScriptOutputPath())
                 .resolve(scriptName.replace(" ", "_") + ".MD");
 
         try {
