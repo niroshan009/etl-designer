@@ -33,8 +33,9 @@ COPY ./target/etl-designer-0.0.1.jar /app/etl-designer-0.0.1.jar
 COPY ./target/resources/application.yaml /app/resources/application.yaml
 
 USER root
-RUN mkdir -p /app/resources/scripts && chown -R spark-sa:spark-sa /app/resources/scripts
+RUN groupadd -r spark-sa && useradd -r -g spark-sa spark-sa
 
+RUN mkdir -p /app/resources/scripts && chown -R spark-sa:spark-sa /app/resources/scripts
 
 USER spark-sa
 

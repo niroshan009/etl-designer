@@ -69,6 +69,7 @@ public class ETLSubmitServiceImpl implements ETLSubmitService {
                 .setDeployMode("cluster")
                 .setSparkHome(etlProperties.getSparkHome())
                 .setAppResource("s3a:/" + reportUrl.getFile())
+//                .setConf("spark.jars.ivy", "/tmp/.ivy2")
                 .setConf("spark.hadoop.fs.s3a.access.key", etlProperties.getHadoop().getS3().getAccessKey())
                 .setConf("spark.hadoop.fs.s3a.secret.key", etlProperties.getHadoop().getS3().getSecretKey())
                 .setConf("spark.hadoop.fs.s3a.endpoint", etlProperties.getHadoop().getS3().getEndpoint())
