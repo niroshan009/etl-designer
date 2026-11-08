@@ -1,0 +1,58 @@
+server:
+  port: 8081
+
+spring:
+  application:
+    name: etl-designer
+  ai:
+    ollama:
+      base-url: http://localhost:11434
+      chat:
+        options:
+          model: qwen2.5-coder:7b
+          temperature: 0.2
+          top-p: 0.15
+      embedding:
+        enabled: false
+  cloud:
+    aws:
+      s3:
+        endpoint: http://localhost:9001
+        path-style-access-enabled: true
+      credentials:
+        access-key: rustfsadmin
+        secret-key: rustfsadmin
+      region:
+        static: us-east-1
+  task:
+    execution:
+      thread-name-prefix: ETLAsync-
+      pool:
+        core-size: 5
+        max-size: 10
+        queue-capacity: 100
+etl:
+  spark_master: k8s://https://127.0.0.1:26443
+  spark_home: ~/Tools/spark-3.5.0-bin-hadoop3-scala2.13
+  access_key: rustfsadmin
+  secret_key: rustfsadmin
+  endpoint_region: us-east-1
+  script_output_path: src/main/resources/scripts
+
+  hadoop:
+    s3:
+      access_key: rustfsadmin
+      secret_key: rustfsadmin
+      endpoint: http://rustfs.orb.local:9000
+      ssl_enabled: false
+      endpoint_region: us-east-1
+  kube:
+    container_image: pyspark-iceberg:latest
+    namespace: spark
+    service_account_name: spark-sa
+    file_upload_path: local:///tmp
+
+
+
+
+

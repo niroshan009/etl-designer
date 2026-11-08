@@ -1,0 +1,54 @@
+server:
+  port: ${PORT}
+
+spring:
+  application:
+    name: etl-designer
+  ai:
+    ollama:
+      base-url: ${OLLAMA_BASE_URL}
+      chat:
+        options:
+          model: ${OLLAMA_CHAT_MODEL}
+          temperature: ${OLLAMA_CHAT_TEMPRATURE}
+          top-p: ${OLLAMA_TOP_P}
+      embedding:
+        enabled: false
+  cloud:
+    aws:
+      s3:
+        endpoint: ${S3_ENDPOINT}
+        path-style-access-enabled: ${S3_PATH_STYLE_ENABLED}
+      credentials:
+        access-key: ${S3_ACCESS_KEY}
+        secret-key: ${S3_SECRET_KEY}
+      region:
+        static: ${S3_REGION}
+  task:
+    execution:
+      thread-name-prefix: ETLAsync-
+      pool:
+        core-size: 5
+        max-size: 10
+        queue-capacity: 100
+
+etl:
+  spark_master: ${ETL_SPARK_MASTER}
+  spark_home: ${SPARK_HOME}
+  access_key: ${ETL_ACCESS_KEY}
+  secret_key: ${ETL_SECRET_KEY}
+  endpoint_region: ${ETL_REGION}
+  script_output_path: ${ETL_LOCAL_SCRIPT_PATH}
+
+  hadoop:
+    s3:
+      access_key: ${ETL_HADOOP_S3_ACCESS_KEY}
+      secret_key: ${ETL_HADOOP_S3_SECRET_KEY}
+      endpoint: ${ETL_HADOOP_S3_ENDPOINT}
+      ssl_enabled: false
+      endpoint_region: ${ETL_HADOOP_S3_REGION}
+  kube:
+    container_image: ${ETL_KUBE_BASE_IMAGE}
+    namespace: ${ETL_KUBE_NAMESPACE}
+    service_account_name: ${ETL_KUBE_SERVICE_ACCOUNT}
+    file_upload_path: ${ETL_KUBE_FILE_UPLOAD_PATH}

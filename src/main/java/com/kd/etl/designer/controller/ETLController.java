@@ -1,6 +1,7 @@
 package com.kd.etl.designer.controller;
 
 import com.kd.etl.designer.dto.ETLRequest;
+import com.kd.etl.designer.dto.SparkSubmitJobRequest;
 import com.kd.etl.designer.service.ETLService;
 import com.kd.etl.designer.service.ETLSubmitService;
 import lombok.extern.slf4j.Slf4j;
@@ -11,14 +12,13 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import reactor.core.publisher.Flux;
 
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 
 @Slf4j
 @RestController()
 @RequestMapping("/etl")
-@CrossOrigin(origins = "http://localhost:5173")
 public class ETLController {
 
     private final OllamaChatModel chatModel;
@@ -36,18 +36,15 @@ public class ETLController {
     }
 
 
-    @PostMapping(value="/create")
-    public ResponseEntity createJournal(@RequestBody ETLRequest etlRequest) {
-        String script = etlService.generateGraph(etlRequest);
-
+    @PostMapping(value="/create", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public Flux<String> createJournal(@RequestBody ETLRequest etlRequest) throws IOException {
         log.info("Received script from LLM");
-        return new ResponseEntity<>(script, HttpStatus.OK);
+        return etlService.generateGraphStream(etlRequest);
     }
 
-    @GetMapping(value = "/submitjob")
-    public ResponseEntity submitJob() throws IOException {
-
-        etlSubmitService.submitEtlService();
+    @PostMapping(value = "/submitjob")
+    public ResponseEntity submitJob(@RequestBody SparkSubmitJobRequest sparkSubmitJobRequest) throws IOException {
+        etlSubmitService.submitEtlService(sparkSubmitJobRequest);
         return new ResponseEntity(HttpStatus.OK);
     }
 }

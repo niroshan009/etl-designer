@@ -1,0 +1,16 @@
+etl:
+  prompts:
+    csvreader: |
+      Read data from path %s with option: %s and assign result dataset to %s variable.
+    filter: |
+      Filter %s dataset with condition %s, and assign result dataset to %s variable.
+    left-join: |
+      Left join %s datasets on condition '%s' and assign result dataset to %s variable.
+    left-anti-join: |
+      Do left anti join on %s with reference dataset %s on condition %s and assign result dataset to  %s variable. Don't use col function when joining.
+    drop-column: |
+      Drop columns %s from the %s dataset and assign to %s dataset.
+    icebergwriter: |
+      Write %s dataset into Apache Iceberg table %s using saveAsTable method. Don't add options.
+    databasewriter: |
+      Write to %s database with configuration %s.

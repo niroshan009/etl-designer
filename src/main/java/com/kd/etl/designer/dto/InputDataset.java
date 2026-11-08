@@ -1,0 +1,15 @@
+package com.kd.etl.designer.dto;
+
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class InputDataset {
+
+    private String dataset;
+
+    private boolean isRefData;
+}

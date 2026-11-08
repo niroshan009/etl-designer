@@ -13,6 +13,8 @@ import java.util.Map;
 @AllArgsConstructor
 public class ETLRequest implements Serializable {
 
+    private String scriptName;
+
     private List<Edge> edges;
 
     private List<Node> nodes;

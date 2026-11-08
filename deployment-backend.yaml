@@ -1,0 +1,53 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: etl-designer-backend
+  namespace: spark
+  labels:
+    app: etl-designer-backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: etl-designer-backend
+  template:
+    metadata:
+      labels:
+        app: etl-designer-backend
+    spec:
+      serviceAccountName: spark-sa
+      containers:
+      - name: etl-designer-backend
+        image: niroshan009/etl-designer:latest
+        env:
+        - name: SPARK_USER
+          value: "spark"
+        - name: HOME
+          value: "/tmp"
+        ports:
+        - name: http
+          containerPort: 8081
+        startupProbe:
+          tcpSocket:
+            port: http
+          periodSeconds: 10
+          failureThreshold: 30
+        readinessProbe:
+          tcpSocket:
+            port: http
+        livenessProbe:
+          tcpSocket:
+            port: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-service
+  namespace: spark
+spec:
+  selector:
+    app: etl-designer-backend
+  ports:
+    - protocol: TCP
+      port: 8081
+      targetPort: 8081
