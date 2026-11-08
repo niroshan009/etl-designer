@@ -37,3 +37,10 @@ docker push niroshan009/etl-designer:latest
 
 
 
+```dockerfile
+docker build -t pyspark-iceberg:lates .
+docker tag niroshan009/pyspark-iceberg:latest niroshan009/pyspark-iceberg:latest
+docker push niroshan009/pyspark-iceberg:latest
+
+```
+

@@ -1,0 +1,66 @@
+services:
+  rustfs:
+    image: rustfs/rustfs:latest
+    container_name: rustfs
+    environment:
+      - RUSTFS_ACCESS_KEY=rustfsadmin
+      - RUSTFS_SECRET_KEY=rustfsadmin
+      - RUSTFS_VOLUMES=/data
+      - RUSTFS_ADDRESS=0.0.0.0:9000
+      - RUSTFS_CONSOLE_ADDRESS=0.0.0.0:9001
+      - RUSTFS_CONSOLE_ENABLE=true
+      - RUSTFS_NOTIFY_ENABLE=true
+
+    networks:
+      - rustfs_net
+    ports:
+      - 9001:9001
+      - 9000:9000
+  mc:
+    depends_on:
+      - rustfs
+    image: amazon/aws-cli:latest
+    container_name: mc
+    restart: "no"
+    networks:
+      - rustfs_net
+    environment:
+      - AWS_ACCESS_KEY_ID=rustfsadmin
+      - AWS_SECRET_ACCESS_KEY=rustfsadmin
+      - AWS_REGION=us-east-1
+    entrypoint: |
+      /bin/sh -c "
+      aws_minio() {
+        aws --endpoint-url http://rustfs:9000 \"\$$@\"
+      }
+      until aws_minio s3 ls >/dev/null 2>&1; do 
+        echo '...waiting for rustfs...' && sleep 1
+      done
+
+      setup_bucket() {
+        BUCKET=\$$1
+        echo \"Setting up bucket: \$$BUCKET\"
+      
+        # 1. Force remove bucket if it exists (empties and deletes)
+        if aws_minio s3api head-bucket --bucket \$$BUCKET >/dev/null 2>&1; then
+          aws_minio s3 rm s3://\$$BUCKET --recursive
+          aws_minio s3api delete-bucket --bucket \$$BUCKET
+        fi
+      
+        # 2. Make bucket
+        aws_minio s3api create-bucket --bucket \$$BUCKET
+      
+        # 3. Set policy to public (read-only for all objects)
+        PUBLIC_POLICY='{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Principal\":\"*\",\"Action\":[\"s3:GetObject\"],\"Resource\":[\"arn:aws:s3::: '\"\$$BUCKET\"'/*\"]}]}'
+        aws_minio s3api put-bucket-policy --bucket \$$BUCKET --policy \"\$$PUBLIC_POLICY\"
+      }
+
+      # Provision the three public buckets
+      setup_bucket \"scripts\"
+
+      # 4. Configure Event Notifications
+
+      echo \"Done!\"
+      "
+networks:
+  rustfs_net:
