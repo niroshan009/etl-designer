@@ -20,6 +20,56 @@ spec:
       - name: etl-designer-backend
         image: niroshan009/etl-designer:latest
         env:
+        - name: PORT
+          value: "8081"
+        - name: OLLAMA_BASE_URL
+          value: "http://host.docker.internal:11434"
+        - name: OLLAMA_CHAT_MODEL
+          value: "qwen2.5-coder:7b"
+        - name: OLLAMA_CHAT_TEMPRATURE
+          value: "0.2"
+        - name: OLLAMA_TOP_P
+          value: "0.15"
+        - name: S3_ENDPOINT
+          value: "http://host.docker.internal:9001"
+        - name: S3_PATH_STYLE_ENABLED
+          value: "true"
+        - name: S3_ACCESS_KEY
+          value: "rustfsadmin"
+        - name: S3_SECRET_KEY
+          value: "rustfsadmin"
+        - name: S3_REGION
+          value: "us-east-1"
+        - name: ETL_SPARK_MASTER
+          value: "k8s://https://kubernetes.default.svc.cluster.local:443"
+        - name: SPARK_HOME
+          value: "/opt/spark"
+        - name: ETL_ACCESS_KEY
+          value: "rustfsadmin"
+        - name: ETL_SECRET_KEY
+          value: "rustfsadmin"
+        - name: ETL_REGION
+          value: "us-east-1"
+        - name: ETL_LOCAL_SCRIPT_PATH
+          value: "/app/resources/scripts"
+        - name: ETL_HADOOP_S3_ACCESS_KEY
+          value: "rustfsadmin"
+        - name: ETL_HADOOP_S3_SECRET_KEY
+          value: "rustfsadmin"
+        - name: ETL_HADOOP_S3_ENDPOINT
+          value: "http://rustfs.orb.local:9000"
+        - name: ETL_HADOOP_S3_REGION
+          value: "us-east-1"
+        - name: ETL_KUBE_BASE_IMAGE
+          value: "pyspark-iceberg:latest"
+        - name: ETL_KUBE_NAMESPACE
+          value: "spark"
+        - name: ETL_KUBE_SERVICE_ACCOUNT
+          value: "spark-sa"
+        - name: ETL_KUBE_FILE_UPLOAD_PATH
+          value: "local:///tmp"
+        - name: HADOOP_USER_NAME
+          value: "spark"
         - name: SPARK_USER
           value: "spark"
         - name: HOME
@@ -38,6 +88,13 @@ spec:
         livenessProbe:
           tcpSocket:
             port: http
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "1024Mi"
+            cpu: "1000m"
 ---
 apiVersion: v1
 kind: Service
