@@ -113,3 +113,24 @@ kubectl apply -f deployment-ui.yaml
 ## Related project
 
 - [ETL Designer UI](https://github.com/niroshan009/etl-designer-ui) — visual workflow editor that sends ETL graphs to this backend.
+
+## Contributing
+
+Contributions are welcome. To contribute:
+
+1. Fork the relevant repository and clone your fork.
+2. Make your changes on a branch.
+3. Test your changes and open a pull request.
+
+### Adding a UI component
+
+1. Create the component in the UI project's `src/components` directory.
+2. Register it in `Sidebar.vue` so it can be selected in the editor.
+3. Register and wire it in `App.vue`.
+
+### Adding backend prompt generation
+
+For a component that needs backend prompt generation, make the corresponding changes in the [backend repository](https://github.com/niroshan009/etl-designer):
+
+1. Add the prompt entry to `prompts.yml`.
+2. Update `getActionPrompt` in `ETLServiceImpl` to handle generation for the new prompt.
