@@ -54,7 +54,7 @@ public class ETLServiceImpl implements ETLService {
 
     @Override
     public Flux<String> generateGraphStream(ETLRequest etlRequest) throws IOException {
-        String scriptName = etlRequest.getScriptName() == null || etlRequest.getScriptName().isBlank() ?
+        String scriptName = null == etlRequest.getScriptName() || etlRequest.getScriptName().isBlank() ?
                 "temp_script" : etlRequest.getScriptName();
         List<Node> nodes = etlRequest.getNodes();
         List<Edge> edges = etlRequest.getEdges();
@@ -158,7 +158,7 @@ public class ETLServiceImpl implements ETLService {
 
     private String getConfiguration(List<Configuration> configurationList){
         String config = "";
-        if(configurationList != null) {
+        if(null != configurationList) {
             config = String.join(", ", configurationList
                     .stream()
                     .map(element -> element.getConfig()+"="+element.getValue())
