@@ -28,6 +28,7 @@ import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.Executor;
 import java.util.stream.Collectors;
 
@@ -42,7 +43,8 @@ public class ETLServiceImpl implements ETLService {
     private final ETLProperties etlProperties;
 
     @Autowired
-    public ETLServiceImpl(OllamaChatModel chatModel, ChatClient.Builder chatClientBuilder, PromptRegistry promptRegistry, Executor executor,ETLProperties etlProperties) {
+    public ETLServiceImpl(OllamaChatModel chatModel, ChatClient.Builder chatClientBuilder,
+                          PromptRegistry promptRegistry, Executor executor,ETLProperties etlProperties) {
         this.chatModel = chatModel;
         this.client = chatClientBuilder.build();
         this.promptRegistry = promptRegistry;
@@ -52,7 +54,7 @@ public class ETLServiceImpl implements ETLService {
 
     @Override
     public Flux<String> generateGraphStream(ETLRequest etlRequest) throws IOException {
-        String scriptName = etlRequest.getScriptName() == null || etlRequest.getScriptName().isBlank() ?
+        String scriptName = null == etlRequest.getScriptName() || etlRequest.getScriptName().isBlank() ?
                 "temp_script" : etlRequest.getScriptName();
         List<Node> nodes = etlRequest.getNodes();
         List<Edge> edges = etlRequest.getEdges();
@@ -74,52 +76,95 @@ public class ETLServiceImpl implements ETLService {
 
         for (ETLVertex e : orderedNodes) {
 
-            String sourceDataset = e.getInputDataset() != null ? String.join(" and ", e.getInputDataset().stream().filter(l -> !l.isRefData()).map(l -> l.getDataset()).collect(Collectors.toSet())) : "";
-            String referenceDataset = e.getInputDataset() != null ? String.join(",", e.getInputDataset().stream().filter(l -> l.isRefData()).map(l -> l.getDataset()).collect(Collectors.toSet())) : "";
-            String config = String.join(",", e.getConfigurations().stream().map(element -> element.getConfig()+"="+element.getValue()).collect(Collectors.toSet()));
-            String action = getActionPrompt(e, sourceDataset, config, referenceDataset);
+            String sourceDataset = e.getInputDataset() != null ?
+                    String.join(" and ", e.getInputDataset()
+                            .stream()
+                            .filter(l -> !l.isRefData())
+                            .map(l -> l.getDataset())
+                            .collect(Collectors.toSet())) : "";
+            String referenceDataset = e.getInputDataset() != null ?
+                    String.join(",", e.getInputDataset()
+                            .stream()
+                            .filter(l -> l.isRefData())
+                            .map(l -> l.getDataset())
+                            .collect(Collectors.toSet())) : "";
+            String action = getActionPrompt(e, sourceDataset, referenceDataset);
             log.info(action);
             userMessages.add(new UserMessage(action));
         }
         return generateScriptAsStream(userMessages, scriptName);
     }
 
-    private @NonNull String getActionPrompt(ETLVertex e, String sourceDataset, String config, String referenceDataset) {
+    private @NonNull String getActionPrompt(ETLVertex e, String sourceDataset, String referenceDataset) {
         String action = switch (e.getType()) {
             case "csvreader" -> {
-                String path = e.getConfigurations().stream().filter(conf -> conf.getConfig().equalsIgnoreCase("filePath")).findFirst().get().getValue();
-                e.getConfigurations().removeIf(conf -> conf.getConfig().equalsIgnoreCase("filePath"));
-                String csvConfig = String.join(" , ", e.getConfigurations().stream().map(element -> element.getConfig()+"="+element.getValue()).collect(Collectors.toSet()));
+                String path = Optional.ofNullable(e.getConfigurations())
+                        .stream()
+                        .flatMap(List::stream)
+                        .filter(ele -> ele.getConfig().equalsIgnoreCase("filePath"))
+                        .map(ele -> ele.getValue())
+                        .findFirst()
+                        .orElse("s3a://path/to/input");
+                Optional.ofNullable(e.getConfigurations())
+                        .ifPresent(list -> list
+                                .removeIf(conf -> conf
+                                        .getConfig()
+                                        .equalsIgnoreCase("filePath")));
+                String csvConfig = getConfiguration(e.getConfigurations());
                 yield promptRegistry.get(e.getType()).formatted(path, csvConfig, e.getOutputDataset());
             }
             case "filter" -> {
-
+                String config = getConfiguration(e.getConfigurations());
                 yield promptRegistry.get(e.getType()).formatted(sourceDataset, config, e.getOutputDataset());
             }
             case "left-join" -> {
-                String condition = String.join(" ", e.getConfigurations().stream().map(element -> element.getValue()).collect(Collectors.toSet()));
+                String condition = String.join(" ", e.getConfigurations()
+                        .stream()
+                        .map(element -> element.getValue()).collect(Collectors.toSet()));
                 yield promptRegistry.get(e.getType()).formatted(sourceDataset, condition, e.getOutputDataset());
             }
             case "left-anti-join" -> {
-
+                String config = getConfiguration(e.getConfigurations());
                 yield promptRegistry.get(e.getType()).formatted(sourceDataset, referenceDataset, config, e.getOutputDataset());
             }
             case "drop-column" -> {
-                String columnsToDrop = String.join(" , ", e.getConfigurations().stream().map(element -> element.getValue()).collect(Collectors.toSet()));
+                String columnsToDrop = getConfiguration(e.getConfigurations());
                 yield promptRegistry.get(e.getType()).formatted(columnsToDrop, sourceDataset, e.getOutputDataset());
             }
             case "icebergwriter" -> {
+                String config = getConfiguration(e.getConfigurations());
                 yield promptRegistry.get(e.getType()).formatted(sourceDataset, config);
             }
             case "databasewriter" -> {
-                String databaseType = e.getConfigurations().stream().filter(element -> element.getConfig().equalsIgnoreCase("databaseType")).findFirst().get().getValue();
-                e.getConfigurations().removeIf(conf -> conf.getConfig().equalsIgnoreCase("databaseType"));
-                String dbConfiguration = String.join(" , ", e.getConfigurations().stream().map(element -> element.getConfig()+"="+element.getValue()).collect(Collectors.toSet()));
+                String databaseType = Optional.ofNullable(e.getConfigurations())
+                        .stream()
+                        .flatMap(List::stream)
+                        .filter(ele -> ele.getConfig().equalsIgnoreCase("databaseType"))
+                        .map(ele -> ele.getValue())
+                        .findFirst()
+                        .orElse("MySQL");
+                Optional.ofNullable(e.getConfigurations())
+                        .ifPresent(list -> list
+                                .removeIf(conf -> conf
+                                .getConfig()
+                                .equalsIgnoreCase("databaseType")));
+                String dbConfiguration = getConfiguration(e.getConfigurations());
                 yield promptRegistry.get(e.getType()).formatted(databaseType, dbConfiguration);
             }
             default -> "";
         };
         return action;
+    }
+
+    private String getConfiguration(List<Configuration> configurationList){
+        String config = "";
+        if(null != configurationList) {
+            config = String.join(", ", configurationList
+                    .stream()
+                    .map(element -> element.getConfig()+"="+element.getValue())
+                    .collect(Collectors.toSet()));
+        }
+        return config;
     }
 
     private static @NonNull List<ETLVertex> createEtlGraph(List<Edge> edges, List<Node> nodes) {
