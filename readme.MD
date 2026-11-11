@@ -15,6 +15,27 @@ The UI sends workflow definitions to this backend. The backend uses Ollama to ge
 
 ![ETL Designer architecture](./ETL_designer_compoenent_diagram.png)
 
+## Kubernetes deployment
+
+Before deploying, ensure the `spark` namespace and `spark-sa` service account exist, the service account has the required permissions, and the Spark application image is available to the cluster. Configure the backend image's Ollama, S3, and Spark settings for endpoints reachable from the cluster.
+
+Start a RustFs or S3 compatible storage to store scripts
+```sh
+docker compose up -d
+```
+
+Apply the backend Deployment and Service:
+
+```sh
+kubectl apply -f deployment-backend.yaml
+```
+
+The deployment exposes the backend on port `8081`. The separate UI manifest is included in this repository for the associated frontend deployment:
+
+```sh
+kubectl apply -f deployment-ui.yaml
+```
+
 ## Requirements
 
 - Java 17
@@ -31,35 +52,6 @@ The service listens on port `8081` by default.
 | --- | --- | --- |
 | `POST` | `/etl/create` | Accepts an ETL graph (`scriptName`, `nodes`, `edges`, and `configuration`) and streams generated PySpark code as `text/event-stream`. |
 | `POST` | `/etl/submitjob` | Accepts a JSON body such as `{"scriptName":"my-etl"}` and submits the corresponding generated script to Spark on Kubernetes. |
-
-## Local development
-
-The `dev` profile provides local Ollama and object-store defaults. Review `src/main/resources/application-dev.yaml` and update its Spark home, Kubernetes API endpoint, and object-store settings for your environment before submitting jobs.
-
-1. Start Ollama and make the configured model available:
-
-   ```sh
-   ollama pull qwen2.5-coder:7b
-   ```
-
-2. Start the local S3-compatible object store. The included `docker-compose.yaml` provisions RustFS and a `scripts` bucket:
-
-   ```sh
-   docker compose up -d
-   ```
-
-3. Run the backend with the development profile:
-
-   ```sh
-   ./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
-   ```
-
-   Or build and run the executable JAR:
-
-   ```sh
-   ./mvnw clean package
-   java -jar target/etl-designer-0.0.1.jar --spring.profiles.active=dev
-   ```
 
 ## Configuration
 
@@ -93,22 +85,6 @@ docker push niroshan009/etl-designer:latest
 ```
 
 The Dockerfile uses `spark:3.5.7-java17` as its base image. Configure the image's environment variables and service endpoints for your deployment rather than relying on its development-oriented defaults.
-
-## Kubernetes deployment
-
-Before deploying, ensure the `spark` namespace and `spark-sa` service account exist, the service account has the required permissions, and the Spark application image is available to the cluster. Configure the backend image's Ollama, S3, and Spark settings for endpoints reachable from the cluster.
-
-Apply the backend Deployment and Service:
-
-```sh
-kubectl apply -f deployment-backend.yaml
-```
-
-The deployment exposes the backend on port `8081`. The separate UI manifest is included in this repository for the associated frontend deployment:
-
-```sh
-kubectl apply -f deployment-ui.yaml
-```
 
 ## Related project
 
